@@ -1,0 +1,581 @@
+    <!-- Codigo html da aplicação -->
+    <nav class="navbar navbar-dark  bg-dark flex-md-nowrap p-0 shadow">
+      <a class="navbar-brand col-sm-3 col-md-2 mr-0" href="#">Jogo da Velha</a>
+      
+      <ul class="navbar-nav px-3">
+        <li class="nav-item text-nowrap">
+          <a class="nav-link" href="#"><label style="color: white;" id="nome-jogador">{{nome}}</label> &nbsp;<button class="btn btn-danger btn-sm" id="bt-sair-escolha" name="bt-sair-escolha" onclick="sair()">Sair</button></a>
+        </li>
+      </ul>
+    </nav>
+
+    <br>
+    <div class="container-fluid">
+      <div class="row">
+        <nav class="col-md-3 d-none d-md-block bg-light sidebar">
+          <div class="sidebar-sticky">
+                <h6>Jogadores disponíveis</h6> 
+                <div id='JogadoresDisponiveis'>Ninguém disponível! Aguarde! </div>
+                
+                <br>
+
+                <h6>Veja seus convites aqui!</h6>
+                <div id='convite'></div>
+          </div>
+        </nav>
+
+        <main role="main" class="col-md-9 ml-sm-auto col-lg-9 px-4"><div class="chartjs-size-monitor" style="position: absolute; left: 0px; top: 0px; right: 0px; bottom: 0px; overflow: hidden; pointer-events: none; visibility: hidden; z-index: -1;"><div class="chartjs-size-monitor-expand" style="position:absolute;left:0;top:0;right:0;bottom:0;overflow:hidden;pointer-events:none;visibility:hidden;z-index:-1;"><div style="position:absolute;width:1000000px;height:1000000px;left:0;top:0"></div></div><div class="chartjs-size-monitor-shrink" style="position:absolute;left:0;top:0;right:0;bottom:0;overflow:hidden;pointer-events:none;visibility:hidden;z-index:-1;"><div style="position:absolute;width:200%;height:200%;left:0; top:0"></div></div></div>
+          
+                <div class="row"> 
+                    <div class="col-md-6">
+                        <h3>Partidas <label id="qtde-partidas">0/4</label></h3>
+                        Seja bem vindo <b>{{nome}}</b>! 
+                    </div>
+                    <div class="col-md-6">
+                        <div class="row"> 
+                             <div id="qtde-vitorias" class="col-md-4">
+                                Vitórias:
+                            </div>
+                            <div id="qtde-derrotas" class="col-md-4">
+                                Derrotas:
+                            </div>
+                            <div id="qtde-empates" class="col-md-4">
+                                Empates:
+                            </div>
+                        </div>
+                    </div>
+                
+                </div>
+                <hr>
+            <div class="container-fluid">
+                <div id="partidas" class="row">
+                    
+                </div>
+            </div>
+
+
+        </main>
+      </div>
+    </div>
+
+<!-- FIM do código html da aplicação -->
+
+<!-- Configuração do socket.io -->
+<script src="/socket.io/socket.io.js"></script>
+
+<script>
+
+    //conexão com o servidor via socket.io na porta 5000
+    const client = io.connect('http://localhost:5000')
+
+    //recupera o nome do jogador da tela da aplicação
+    nome_ = document.getElementById('nome-jogador').innerHTML;
+
+    //variaveis do jogo
+    let contVitorias  = 0
+    let contDerrotas  = 0
+    let contEmpates   = 0
+    let contPartidas  = 0
+    const MaxPartidas = 4
+
+    //jogador envia a mensagem de conectar para o servidor
+    client.emit('conectar', {
+            nome: nome_
+    })
+
+    //jogador envia a mensagem solicitando o vetor de jogadores disponiveis
+    client.emit('Server-Jogadores-Disponiveis')
+
+    //jogador recebe a mensagem com o vetor de jogadores disponiveis
+    client.on('Cliente-Jogadores-Disponiveis', function(data){
+        let html = '<table>'
+        
+        //criando a tabela html com os jogadores disponiveis
+        for(let i=0; i < data.JogadoresDisponiveis.length; i++){
+            if(data.JogadoresDisponiveis[i][0] != nome_){
+                html += '<tr><td>'+data.JogadoresDisponiveis[i][0]+'</td><td><div id="'+data.JogadoresDisponiveis[i][0]+'-enviar-convite">'+'- '+data.JogadoresDisponiveis[i][1]+'</div></td></tr>'
+            }
+        }
+        html += '</table>'
+       
+        //verifica se contem mais de um jogador disponivel
+        if(data.JogadoresDisponiveis.length > 1){
+            //coloca a tabela html de jogadores disponiveis na tela do cliente
+            document.getElementById('JogadoresDisponiveis').innerHTML = html
+        }else{
+            document.getElementById('JogadoresDisponiveis').innerHTML = '<label class="badge alert-danger">Nenhum jogador disponível!</label>'
+        }
+        
+    })
+
+    //jogador recebe um convite para jogar
+    client.on(nome_ + ' vamos jogar?', function(data){
+        
+        //cria o html para mostrar os convites que o jogador recebeu
+        let html = '<div id="'+data.jogador1+'-convite"> <label id="nome-jogador-adv">'+data.jogador1+'</label> quer jogar com você <button class="btn btn-info btn-sm" id=\'bt-enviar-convite\' name=\'bt-enviar-convite\' onclick="aceitarConvite(\''+data.jogador1+'\')">Aceitar</button> </div>'
+        //coloca na tela os convites que ele recebeu
+        document.getElementById('convite').innerHTML += html
+    })
+
+    //jogador aceita um convite
+    function aceitarConvite(nomeadv_){
+        //envia uma mensagem para o servidor avisando que aceitou um convite
+        client.emit('aceitar convite', {
+            jogador1: nomeadv_,
+            jogador2: nome_,
+            sala: 'Room'+ nomeadv_+nome_
+        })
+        //remove da tela do jogador o convite aceito
+        document.getElementById(nomeadv_+'-convite').remove()
+        //cria uma nova partida em html na tela 
+        criarPartida(nomeadv_,'X', 'Room'+ nomeadv_+nome_)
+    }
+
+    //jogaor envia o convite para alguem
+    function enviarConvite(nomeadv_){
+
+        //verifica se ele ja está no máximo de partidas
+        if(contPartidas === MaxPartidas){
+            alert('Você atingiu o máximo de partidas permitidas para jogar ao mesmo tempo! Termine uma partida!')
+        }else{
+            //enviando a mensagem para o servidor que que convidar alguem, passando o nome do adversario
+            client.emit('enviar convite', {
+                jogador1: nome_,
+                jogador2: nomeadv_,
+                sala: 'Room'+ nome_ + nomeadv_
+            })
+
+            //mudando na tela para convite enviado
+            document.getElementById(nomeadv_+'-enviar-convite').innerHTML = ' - <label class="badge alert-info">Enviado</label>'
+        
+        }
+    
+    }
+
+    //recebe a mensagem de que algum jogador aceitou seu convite
+    client.on('Aceitou seu convite', function(data){
+        //verifica se o jogador está no seu máximo de partidas
+        if(contPartidas < MaxPartidas){
+            //muda o status do convite do jogador quue aceitou seu convite
+            document.getElementById(data.jogador2+'-enviar-convite').innerHTML = '- <label class="badge alert-success">Disponível</label><button class="btn btn-info btn-sm" onclick="enviarConvite(\''+data.jogador2+'\')" id=\'bt-enviar-convite\' name=\'bt-enviar-convite\'>Enviar convite</button>'
+            //cria uma nova partida de um jogo html na tela
+            criarPartida(data.jogador2,'O', 'Room'+ data.jogador1 + data.jogador2)
+        }else{
+            alert('Máximo de partidas atingindo!')
+        }
+    })
+
+    //metodo que cria um partida em html para mostrar na tela do jogador
+    function criarPartida(jogador, tipo, sala){
+        
+        //atualiza a quantidade de partidas
+        contPartidas++
+        document.getElementById('qtde-partidas').innerHTML = contPartidas+'/4'    
+
+        //dinamica do tabeleiro sendo desenhada
+        let html = ''+
+        '<div id="'+sala+'" class="col-md-6 img-thumbnail">'+
+            '<div id="part"> <p>Partida: <b><label id="'+sala+'-status-partida">Iniciada</label></b></p></div>'+
+            '<div class="row">'+
+            '    <div class="col-md-6">'+
+            '            <table border = \'1\' >'+
+            '                <tr>'+
+            '                    <td><button class="btn btn-info btn-lg btn-block" id="bt1'+sala+'" onclick="jogar(\'bt1'+sala+'\',\''+sala+'\',\''+tipo+'\')"></button></td>'+
+            '                    <td><button class="btn btn-info btn-lg btn-block" id="bt2'+sala+'" onclick="jogar(\'bt2'+sala+'\',\''+sala+'\',\''+tipo+'\')"></button></td>'+
+            '                    <td><button class="btn btn-info btn-lg btn-block" id="bt3'+sala+'" onclick="jogar(\'bt3'+sala+'\',\''+sala+'\',\''+tipo+'\')"></button></td>'+
+            '                </tr>'+ 
+            '                <tr>'+
+            '                    <td><button class="btn btn-info btn-lg btn-block" id="bt4'+sala+'" onclick="jogar(\'bt4'+sala+'\',\''+sala+'\',\''+tipo+'\')"></button></td>'+
+            '                    <td><button class="btn btn-info btn-lg btn-block" id="bt5'+sala+'" onclick="jogar(\'bt5'+sala+'\',\''+sala+'\',\''+tipo+'\')"></button></td>'+
+            '                    <td><button class="btn btn-info btn-lg btn-block" id="bt6'+sala+'" onclick="jogar(\'bt6'+sala+'\',\''+sala+'\',\''+tipo+'\')"></button></td>'+
+            '                </tr>'+
+            '                <tr>'+
+            '                    <td><button class="btn btn-info btn-lg btn-block" id="bt7'+sala+'" onclick="jogar(\'bt7'+sala+'\',\''+sala+'\',\''+tipo+'\')"></button></td>'+
+            '                    <td><button class="btn btn-info btn-lg btn-block" id="bt8'+sala+'" onclick="jogar(\'bt8'+sala+'\',\''+sala+'\',\''+tipo+'\')"></button></td>'+
+            '                    <td><button class="btn btn-info btn-lg btn-block" id="bt9'+sala+'" onclick="jogar(\'bt9'+sala+'\',\''+sala+'\',\''+tipo+'\')"></button></td>'+
+            '                </tr>'+
+            '            </table>'+ 
+            '</div> <div class="col-md-6"> '+
+            '            <center><div>&nbsp;&nbsp;Jogando com: <label id="nome-jogador"><b>'+jogador+'</b></label>&nbsp;&nbsp;</div>'+ 
+            '            <div>&nbsp;&nbsp;Você é:  <b> <label id="tipo-jogador">'+tipo+'</label></b>&nbsp;&nbsp;</div>'+ 
+            '            <div>&nbsp;&nbsp;<h3><label id="'+sala+'-vez-jogador"></label></h3>&nbsp;&nbsp;</div><center>'+ 
+            '            <br>'+ 
+            '            <br>'+ 
+            '            <!--<center><button class="btn btn-danger" id="bt-sair-2" name="br-sair">Sair</button></center>-->'+ 
+            '    </div>'+ 
+            '</div>'+
+        '</div>'
+
+        //recupera da interface as partidas ja iniciadas concatenando com uma partida nova
+        html += document.getElementById('partidas').innerHTML
+        //colocando as partidas em html na tela do jogador
+        document.getElementById('partidas').innerHTML = html
+        //muda o status da partida na tela
+        document.getElementById(sala+'-status-partida').style.color = 'green'
+        //recupera o objeto vez da sala do jogador
+        vez = document.getElementById(sala+'-vez-jogador');
+        
+        //verifica se o jogador é O ou X
+        if(tipo === 'O'){
+            //altera o status da vez do jogador
+            vez.innerHTML = 'Sua Vez'
+            vez.style.color = 'green'
+        }else{
+            //altera o status da vez do jogador
+            vez.innerHTML = 'Aguarde!'
+            vez.style.color = 'red'
+            desabilitarButoes(sala)
+        }
+
+        //verifica se o jogador atingiu o maximo de partidas 
+        if(contPartidas == MaxPartidas){
+             //avisa o servidor que o jogador atingiu o maximo de partidas - status é indisponivel
+            client.emit('Maximo de partidas', {
+                nome: nome_
+            })
+        }
+
+        //chama o css do butoes para colocar o tamanho dos butoes padroes
+        botaoJogoCss(sala)
+    }
+
+    //definir tamanho padrao para o botao do jogo
+    function botaoJogoCss(sala_){
+        document.getElementById('bt1'+sala_).style.height = '50px'
+        document.getElementById('bt1'+sala_).style.width = '50px'
+        document.getElementById('bt2'+sala_).style.height = '50px'
+        document.getElementById('bt2'+sala_).style.width = '50px'
+        document.getElementById('bt3'+sala_).style.height = '50px'
+        document.getElementById('bt3'+sala_).style.width = '50px'
+        document.getElementById('bt4'+sala_).style.height = '50px'
+        document.getElementById('bt4'+sala_).style.width = '50px'
+        document.getElementById('bt5'+sala_).style.height = '50px'
+        document.getElementById('bt5'+sala_).style.width = '50px'
+        document.getElementById('bt6'+sala_).style.height = '50px'
+        document.getElementById('bt6'+sala_).style.width = '50px'
+        document.getElementById('bt7'+sala_).style.height = '50px'
+        document.getElementById('bt7'+sala_).style.width = '50px'
+        document.getElementById('bt8'+sala_).style.height = '50px'
+        document.getElementById('bt8'+sala_).style.width = '50px'
+        document.getElementById('bt9'+sala_).style.height = '50px'
+        document.getElementById('bt9'+sala_).style.width = '50px'
+
+    }
+
+    //funcao jogar dos botoes do tabuleiro, recebe a sala como paramentro, o botao que foi clicado e o simbolo O ou X 
+    function jogar(bt, sala_, tipo_){
+        //recupera objeto div vez
+        vez = document.getElementById(sala_+'-vez-jogador');
+        cont=0
+
+        //verifica se o espaço ja foi preenchido
+        if(document.getElementById(bt).innerHTML === ''){
+             
+            //muda a label do butao para o simbolo do jogador
+            document.getElementById(bt).innerHTML = tipo_
+            //muda o status da vez
+            vez.innerHTML = 'Aguarde!'
+            vez.style.color = 'red'
+            cont++
+
+            //verifica se o jogo tem vencedor
+            if(check_end(sala_) == false){
+                //senao verifica se o jogo velhou
+                if(check_velhou(sala_)){
+                    //muda o status da partida para finalizada
+                    document.getElementById(sala_+'-status-partida').innerHTML = 'finalizada!'
+                    document.getElementById(sala_+'-status-partida').style.color = 'red'
+                    //muda o status da vez pra velhou
+                    vez.innerHTML = 'Velhou #'
+
+                    //verifica se o jogador estava indisponivel com o maximo de partidas
+                    if(contPartidas === MaxPartidas){
+                        //envia para o servidor o aviso para ficar disponivel
+                        client.emit('ficar disponivel', {
+                            nome: nome_
+                        })
+                    }
+
+                    //diminui a quantidade de partidas 
+                    contPartidas-- 
+                    //atualizada a quantidade de partidas na tela
+                    document.getElementById('qtde-partidas').innerHTML = contPartidas+'/'+MaxPartidas    
+
+                    //desenha # nos butoes do jogo
+                    velhou(sala_)  
+                    contEmpates++
+                    //atualiza o cabeçalho empates da aplicação
+                    document.getElementById("qtde-empates").innerHTML = "Empates: " +contEmpates    
+
+                    //avisa outro jogador que velhou o jogo
+                    client.emit('Velhou', {
+                        sala: sala_,
+                        msg: bt,
+                        tipo: tipo_
+                    })
+
+                }else{
+                    //avisa o jogador que ja fez sua jogada enviando a sala, o botao que clicou e o simbolo O ou X
+                    client.emit('jogadas', {
+                        sala: sala_,
+                        msg: bt,
+                        tipo: tipo_
+                    })
+                    desabilitarButoes(sala_)
+                }
+            }else{
+                //muda o status da partida para finalizada
+                document.getElementById(sala_+'-status-partida').innerHTML = 'finalizada!'
+                document.getElementById(sala_+'-status-partida').style.color = 'red'
+                //muda o status da vez pra Ganhou
+                vez.innerHTML = 'Você Ganhou :)'
+                vez.style.color = 'green'
+                contVitorias++
+
+                //verifica se o jogador estava indisponivel com o maximo de partidas
+                if(contPartidas === MaxPartidas){
+                    //envia para o servidor o aviso para ficar disponivel
+                    client.emit('ficar disponivel', {
+                        nome: nome_
+                    })
+                }
+                
+                //diminui a quantidade de partidas 
+                contPartidas--
+                 //atualizada a quantidade de partidas na tela
+                document.getElementById('qtde-partidas').innerHTML = contPartidas+'/'+MaxPartidas    
+                //atualiza o cabeçalho de quantidade vitorias na tela
+                document.getElementById("qtde-vitorias").innerHTML = "Vitórias: " +contVitorias
+
+                //avisa o outro jogador que ganhou, enviando a sala, o botao que clicou e o simbolo O ou X
+                client.emit('Ganhei', {
+                        sala: sala_,
+                        msg: bt,
+                        tipo: tipo_
+                })
+            }
+        }else{
+            alert("Espaço já preenchido. Escolha outra posição!") 
+        }
+    }
+
+    //verifica se velhou o jogo
+    function check_velhou(sala_){
+        bt1 = document.getElementById('bt1'+sala_).innerHTML
+        bt2 = document.getElementById('bt2'+sala_).innerHTML
+        bt3 = document.getElementById('bt3'+sala_).innerHTML
+        bt4 = document.getElementById('bt4'+sala_).innerHTML
+        bt5 = document.getElementById('bt5'+sala_).innerHTML
+        bt6 = document.getElementById('bt6'+sala_).innerHTML
+        bt7 = document.getElementById('bt7'+sala_).innerHTML
+        bt8 = document.getElementById('bt8'+sala_).innerHTML        
+        bt9 = document.getElementById('bt9'+sala_).innerHTML
+
+        if((bt1!='')&&(bt2!='')&&(bt3!='')&&(bt4!='')&&(bt5!='')&&(bt6!='')&&(bt7!='')&&(bt8!='')&&(bt9!='')){
+            return true
+        }else{ return false}
+    }
+
+    //verifica se alguem venceu
+    function check_end(sala_){
+        bt1 = document.getElementById('bt1'+sala_).innerHTML
+        bt2 = document.getElementById('bt2'+sala_).innerHTML
+        bt3 = document.getElementById('bt3'+sala_).innerHTML
+        bt4 = document.getElementById('bt4'+sala_).innerHTML
+        bt5 = document.getElementById('bt5'+sala_).innerHTML
+        bt6 = document.getElementById('bt6'+sala_).innerHTML
+        bt7 = document.getElementById('bt7'+sala_).innerHTML
+        bt8 = document.getElementById('bt8'+sala_).innerHTML        
+        bt9 = document.getElementById('bt9'+sala_).innerHTML
+         
+        //check linhas:)
+        if(bt1 === bt2 && bt2 === bt3 && bt1 != ''){ 
+            pintarButoes('bt1','bt2','bt3',sala_)
+            return true
+        }else if(bt4 === bt5 && bt5 === bt6 && bt4 != ''){ 
+            pintarButoes('bt4','bt5','bt6',sala_)
+            return true
+        }else if(bt7 === bt8 && bt8 === bt9 && bt7 != ''){
+            pintarButoes('bt7','bt8','bt9',sala_)
+            return true
+        //check colunas:)
+        }else if(bt1 === bt4 && bt4 === bt7 && bt1 != ''){
+            pintarButoes('bt1','bt4','bt7',sala_)
+            return true
+        }else if(bt2 === bt5 && bt5 === bt8 && bt2 != ''){
+            pintarButoes('bt2','bt5','bt8',sala_)
+            return true
+        }else if(bt3 === bt6 && bt6 === bt9 && bt3 != ''){
+            pintarButoes('bt3','bt6','bt9',sala_)
+            return true
+        //check transversais:)    
+        }else if(bt1 === bt5 && bt5 === bt9 && bt1 != ''){
+            pintarButoes('bt1','bt5','bt9',sala_)
+            return true
+        }else if(bt7 === bt5 && bt5 === bt3 && bt7 != ''){
+            pintarButoes('bt7','bt5','bt3',sala_)
+            return true
+        }else{
+            return false
+        }
+    }
+
+    //aviso de que o adversario jogou
+    client.on('adversario jogou', function(data){
+        //atualiza a label do botao do tabuleiro da sala para o simbolo do adversario
+        document.getElementById(data.msg).innerHTML = data.tipo
+        //atualiza o status da vez do jogador
+        document.getElementById(data.sala+'-vez-jogador').innerHTML = 'Sua Vez'
+        document.getElementById(data.sala+'-vez-jogador').style.color = 'green'
+        habilitarButoes(data.sala)
+    })
+
+    //aviso que o jogador perdeu
+    client.on('Perdeu', function(data){
+        //marca o espaço que o adversario jogou no tabuleiro
+        document.getElementById(data.msg).innerHTML = data.tipo 
+        //Altera as sinalizações das partidas
+        document.getElementById(data.sala+'-status-partida').innerHTML = 'finalizada!'
+        document.getElementById(data.sala+'-status-partida').style.color = 'red'
+        document.getElementById(data.sala+'-vez-jogador').innerHTML = 'Você Perdeu :('
+        document.getElementById(data.sala+'-vez-jogador').style.color = 'red'
+        contDerrotas++
+
+        //verifica se o jogador estava indisponivel com limite maximo de partidas
+        if(contPartidas === MaxPartidas){
+            //envia a mensagem para o servidor, para ficar disponivel
+            client.emit('ficar disponivel', {
+                nome: nome_
+            })
+        }
+        
+        //diminui a quantidade de partidas
+        contPartidas--
+        //atualiza na tela a quantidade de partidas jogando
+        document.getElementById('qtde-partidas').innerHTML = contPartidas+'/'+MaxPartidas 
+           
+        //altera o placar de derrotas do jogo
+        document.getElementById("qtde-derrotas").innerHTML = "Derrotas: " + contDerrotas
+        
+        habilitarButoes(data.sala)
+    })
+
+    //aviso que o jogo velhou
+    client.on('Velhou', function(data){
+        //altera o status da partida
+        document.getElementById(data.sala+'-status-partida').innerHTML = 'finalizada!'
+        document.getElementById(data.sala+'-status-partida').style.color = 'red'
+        document.getElementById(data.sala+'-vez-jogador').innerHTML = 'Velhou #'
+        //atualiza os butoes para #
+        velhou(data.sala)
+        //atualiza o cabeçalho empates da aplicação
+        contEmpates++
+        document.getElementById("qtde-empates").innerHTML = "Empates: " +contEmpates    
+
+        habilitarButoes(data.sala)
+    })
+
+    //recebe a mensagem que algum jogador se desconectou do jogo
+    client.on('jogador desconectou finalizar partidas', function(data){
+
+        //sala com se fosse ele convidando
+        sala = 'Room'+nome_+data.nome
+        //recupera o objeto status da partida da tela
+        partida = document.getElementById(sala+'-status-partida')
+        //verifica se existe essa partida em andamento
+        if(partida != null){
+            //finaliza a partida mudando o status
+            partida.innerHTML = 'Finalizada, o jogador '+data.nome+' se desconectou!'
+            partida.style.color = 'red'
+
+            //verifica se o jogador estava com o maximo de partidas
+            if(contPartidas === MaxPartidas){
+                //avisa para o servidor colocar o jogador disponivel novamente
+                client.emit('ficar disponivel', {
+                    nome: nome_
+                })
+            }
+            
+            //atualiza a quantidade de partidas em andamento na tela
+            contPartidas--
+            document.getElementById('qtde-partidas').innerHTML = contPartidas+'/'+MaxPartidas 
+        }
+
+        //sala com se fosse ele o convidado
+        sala = 'Room'+data.nome+nome_
+        //recupera o objeto status da partida da tela
+        partida = document.getElementById(sala+'-status-partida')
+         //verifica se existe essa partida em andamento
+        if(partida != null){
+            //finaliza a partida mudando o status
+            partida.innerHTML = 'Finalizada, o jogador '+data.nome+' se desconectou!'
+            partida.style.color = 'red'
+
+            //verifica se o jogador estava com o maximo de partidas
+            if(contPartidas === MaxPartidas){
+                //avisa para o servidor colocar o jogador disponivel novamente
+                client.emit('ficar disponivel', {
+                    nome: nome_
+                })
+            }
+            
+            //atualiza a quantidade de partidas em andamento na tela
+            contPartidas--
+            document.getElementById('qtde-partidas').innerHTML = contPartidas+'/'+MaxPartidas
+        }
+
+    })
+
+    function desabilitarButoes(sala_){
+        document.getElementById('bt1'+sala_).disabled = true
+        document.getElementById('bt2'+sala_).disabled = true
+        document.getElementById('bt3'+sala_).disabled = true
+        document.getElementById('bt4'+sala_).disabled = true
+        document.getElementById('bt5'+sala_).disabled = true
+        document.getElementById('bt6'+sala_).disabled = true
+        document.getElementById('bt7'+sala_).disabled = true
+        document.getElementById('bt8'+sala_).disabled = true
+        document.getElementById('bt9'+sala_).disabled = true
+    }
+
+    function habilitarButoes(sala_){
+        document.getElementById('bt1'+sala_).disabled = false
+        document.getElementById('bt2'+sala_).disabled = false
+        document.getElementById('bt3'+sala_).disabled = false
+        document.getElementById('bt4'+sala_).disabled = false
+        document.getElementById('bt5'+sala_).disabled = false
+        document.getElementById('bt6'+sala_).disabled = false
+        document.getElementById('bt7'+sala_).disabled = false
+        document.getElementById('bt8'+sala_).disabled = false
+        document.getElementById('bt9'+sala_).disabled = false
+    }
+
+    function velhou(sala_){
+        document.getElementById('bt1'+sala_).innerHTML = '#'
+        document.getElementById('bt2'+sala_).innerHTML = '#'
+        document.getElementById('bt3'+sala_).innerHTML = '#'
+        document.getElementById('bt4'+sala_).innerHTML = '#'
+        document.getElementById('bt5'+sala_).innerHTML = '#'
+        document.getElementById('bt6'+sala_).innerHTML = '#'
+        document.getElementById('bt7'+sala_).innerHTML = '#'
+        document.getElementById('bt8'+sala_).innerHTML = '#'
+        document.getElementById('bt9'+sala_).innerHTML = '#'
+    }
+
+    function sair(){
+        
+        /*client.emit('sair', {
+            nome: nome_
+        })*/
+
+        window.location.href = "http://localhost:5000";
+    }
+
+    
+    function pintarButoes(bt1,bt2,bt3,sala_){
+        document.getElementById(bt1+sala_).style.color = 'black'
+        document.getElementById(bt2+sala_).style.color = 'black'
+        document.getElementById(bt3+sala_).style.color = 'black'
+    }
+
+</script>
